@@ -8,6 +8,9 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace Two_XNA_Client
 {
+    /// <summary>
+    /// Player class, keeps track of all variables 
+    /// </summary>
     public class Player : IDrawable
     {
         public int Number;
@@ -19,6 +22,7 @@ namespace Two_XNA_Client
         public PlayerSelectButton PlayerSelect;
         public Texture2D CurrentPlateTexture;
         public int PlayerPos;
+        private DrinkGraphic _drinkGraphic;
         public Player(int n, string name, TwoClient twoClient)
         {
             Number = n;
@@ -33,9 +37,14 @@ namespace Two_XNA_Client
             int i = 0;
             int n = NumberOfCards;
             int offset = 40;
+            if( _twoClient.Turn == Number)
+            {
+                _twoClient.SpriteBatch.Draw(_twoClient.SpotlightTexture,
+                                            new Rectangle(-20, _twoClient.WindowHeight  - 460, _twoClient.WindowWidth + 80, 592),
+                                            new Rectangle(0, 0, 300, 300), Color.White);
+            }
             if (_twoClient.GameState == 2 )
             {
-                    
                 _twoClient.SpriteBatch.Draw(CurrentPlateTexture,
                                                 new Rectangle(150, _twoClient.WindowHeight - 276,
                                                                 128, 256),
@@ -99,8 +108,8 @@ namespace Two_XNA_Client
                 _twoClient.DrawToken(2, 255, _twoClient.WindowHeight - 265, 0);
             else
                 _twoClient.DrawToken(1, 255 , _twoClient.WindowHeight - 265, 0);
-            _twoClient.DrawString(Name, _twoClient.WindowWidth - 250, _twoClient.WindowHeight - 280, 0, 1f);
-            _twoClient.DrawString(String.Format("Cards: {0}\r\nDrinks: {1}", NumberOfCards.ToString(), NumberOfDrinks.ToString()), _twoClient.WindowWidth - 250, _twoClient.WindowHeight - 260, 0, .66f);
+            _twoClient.DrawString(Name,  175, _twoClient.WindowHeight - 280, 0, 1f, Color.Black);
+            _twoClient.DrawString(String.Format("Cards: {0}\r\nDrinks: {1}", NumberOfCards.ToString(), NumberOfDrinks.ToString()),  175, _twoClient.WindowHeight - 260, 0, .66f, Color.Black);
 
             if (n != 0)
             {
@@ -152,6 +161,10 @@ namespace Two_XNA_Client
             //DrawBorderedRect(1, 10, 100, yTop, 350);
             if (_twoClient.Turn == Number)
             {
+                _twoClient.SpriteBatch.Draw(_twoClient.SpotlightTexture,
+                                            new Rectangle(xOffset - 50, _twoClient.WindowHeight/2 - 300, 228, 552),
+                                            new Rectangle(0, 0, 300, 300), Color.White);
+
                 _twoClient.SpriteBatch.Draw(CurrentPlateTexture,
                                                 new Rectangle(xOffset, _twoClient.WindowHeight/2 - 190,
                                                                 128, 342),
@@ -266,26 +279,65 @@ namespace Two_XNA_Client
         {
             if (PlayerPos == null)
                 return;
+            
             switch(PlayerPos)
             {
                 case 0:
                     DrawAsPlayerCards();
-                    return;
+                    break;
                 case 1:
                     DrawVerticalPlayer(_twoClient.WindowWidth - 138);
-                    return;
+                    break;
                 case -1:
                     DrawVerticalPlayer(10);
-                    return;
+                    break;
                 case 2:
                     DrawOppositePlayer(_twoClient.WindowWidth/2);
-                    return;
+                    break;
                 case 3:
                     DrawOppositePlayer(200);
-                    return;
+                    break;
                 case 4:
                     DrawOppositePlayer(_twoClient.WindowWidth-200);
-                    return;
+                    break;
+            }
+            if (_drinkGraphic != null && _drinkGraphic.IsActive)
+                _drinkGraphic.Draw();
+        }
+        public void StartDrink()
+        {
+            if( _drinkGraphic != null )
+            {
+                _drinkGraphic.Start();
+            }
+        }
+        public void Drink( float duration )
+        {
+            if (_drinkGraphic == null || !_drinkGraphic.IsActive)
+            {
+                switch (PlayerPos)
+                {
+                    case 1:
+                        _drinkGraphic = new DrinkGraphic(_twoClient, _twoClient.WindowWidth - 260,
+                                                         _twoClient.WindowHeight/2 - 125, duration);
+                        return;
+                    case -1:
+                        _drinkGraphic = new DrinkGraphic(_twoClient, 10, _twoClient.WindowHeight/2 - 125, duration);
+                        return;
+                    case 2:
+                        _drinkGraphic = new DrinkGraphic(_twoClient, _twoClient.WindowWidth/2 - 125, 10, duration);
+                        return;
+                        /*case 3:
+                        DrawOppositePlayer(200);
+                        return;
+                    case 4:
+                        DrawOppositePlayer(_twoClient.WindowWidth - 200);
+                        return;*/
+                }
+            }
+            else
+            {
+                _drinkGraphic.AddTime(duration);
             }
         }
     }

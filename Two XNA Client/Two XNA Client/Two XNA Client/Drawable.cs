@@ -10,6 +10,9 @@ using Microsoft.Xna.Framework;
 
 namespace Two_XNA_Client
 {
+    /// <summary>
+    /// Interface for objects that can be drawn
+    /// </summary>
     public interface  IDrawable
     {
         void Draw();
@@ -113,14 +116,17 @@ namespace Two_XNA_Client
             _twoClient.SpriteBatch.Draw(_twoClient.BlankTextures[2], R, Color.White);
         }
     }
-    public class TimedDrinkDialog : IDrawable
+    public interface ITimedDialog : IDrawable
+    {
+        Boolean IsActive { get; set; }
+    }
+    public class TimedDrinkDialog : ITimedDialog
     {
         private TwoClient _twoClient;
         public double TimeStarted;
         public double TimeDelay;
         public double TimeFinish;
         private List<string> _dialogText;
-        public bool IsActive = true;
         public bool IsRunning = false;
         private StartDrinkButton _startButton;
         private CloseDrinkButton _closeButton;
@@ -128,47 +134,75 @@ namespace Two_XNA_Client
         public int OldGameState;
         public bool ResetDrinks = true;
         private CurvedRect _bgRect;
+        private DrinkAnimation _drinkAnimation;
+        public int PlayerNumber;
+        public Boolean IsPlayer;
+        private string _playerName;
         public TimedDrinkDialog( TwoClient twoClient, float delay, string toSay )
         {
-           
             _twoClient = twoClient;
+                
+                IsPlayer = true;
+                _startButton = new StartDrinkButton(_twoClient, this, -75, -10, _twoClient.Sf, twoClient.ButtonTexture);
+                _closeButton = new CloseDrinkButton(_twoClient, this, -75, 90, _twoClient.Sf, twoClient.ButtonTexture);
+                //_twoClient.SendMessage("DRINKSFORM " + delay);
+                _drinkAnimation = new DrinkAnimation(twoClient, twoClient.WindowWidth / 2 - 215, twoClient.WindowHeight / 2 - 60, delay);
+            IsActive = true;
+            _playerName = _twoClient.PlayerList[_twoClient.PlayerNumber].Name;
             _dialogText = _twoClient.SplitText(385, toSay);
             TimeDelay = delay * 10000000;// NORMAL: 10000000;
-            _startButton = new StartDrinkButton(_twoClient,this,-64,40,_twoClient.Sf,twoClient.ButtonTexture);
-            _closeButton = new CloseDrinkButton(_twoClient, this, 160, 40, _twoClient.Sf, twoClient.ButtonTexture);
             _progBar = new ProgressBar(_twoClient,_twoClient.WindowWidth/2-175,350,twoClient.WindowHeight /2, 15, 2);
             _bgRect = new CurvedRect(_twoClient, _twoClient.WindowWidth / 2 - 220, 440, _twoClient.WindowHeight / 2 - 40 - (25 * _dialogText.Count), 160 + (25 * _dialogText.Count), Color.LightBlue);
             OldGameState = twoClient.GameState;
+            
             twoClient.GameState = 4;
+        }
+        public void AddDrink(float timeToAdd)
+        {
+            TimeDelay += (long) (timeToAdd*10000000);
+            _drinkAnimation.AddTime( timeToAdd);
+        }
+        public void Start()
+        {
+            TimeStarted = DateTime.Now.Ticks;
+            IsActive = true;
+            IsRunning = true;
+            _drinkAnimation.Start();
+            _twoClient.SendMessage("STARTDRINK");
+
+        }
+        public void Close()
+        {
+            _twoClient.GameState = OldGameState;
+            if (ResetDrinks)
+            {
+                _twoClient.SendMessage("DRINKRESET");
+                _twoClient.PlayerList[_twoClient.PlayerNumber].NumberOfDrinks = 0;
+            }
+            IsActive = false;
         }
         public void Draw()
         {
             if( IsRunning )
             {
-                if (DateTime.Now.Ticks -TimeStarted  > TimeDelay)
-                {
-                    _progBar.SetProgress(1f);
-                    IsRunning = false;
-                    _closeButton.IsActive = true;
-                }
-                else
-                {
-                    float s = (float) (DateTime.Now.Ticks - TimeStarted);
-                    s = (float)(s/TimeDelay);
-                    _progBar.SetProgress(s);
-                }
+                if( (System.DateTime.Now.Ticks - TimeStarted) > TimeDelay  + 10000000 )
+                    Close();
             }
-            _bgRect.Draw();
+            _twoClient.SpriteBatch.Draw(_twoClient.DrinkPlateTexture,
+                                                new Rectangle(_twoClient.WindowWidth/2-250, _twoClient.WindowHeight/2-250,
+                                                              500, 500),
+                                                new Rectangle(0, 0, 500, 500), Color.White);
+            _twoClient.DrawString(_playerName,(int)(_twoClient.WindowWidth / 2 - (_twoClient.Sf.MeasureString(_playerName).X) ),_twoClient.WindowHeight/2 - 232,0f,2.0f,Color.Yellow);
             int lineNumber = 0;
             foreach (string s in _dialogText)
             {
-                _twoClient.DrawString(s, (int)(_twoClient.WindowWidth / 2 - _twoClient.Sf.MeasureString(s).X / 2), _twoClient.WindowHeight / 2 - 27 * (_dialogText.Count - lineNumber) - 10 ,0f,1f);
+                _twoClient.DrawString(s, (int)(_twoClient.WindowWidth / 2 - _twoClient.Sf.MeasureString(s).X / 2), _twoClient.WindowHeight / 2 - 27 * (_dialogText.Count - lineNumber) - 96 ,0f,1f);
                 lineNumber++;
             }
+
+            _startButton.Draw();
             
-                _startButton.Draw();
-                _closeButton.Draw();
-                _progBar.Draw();
+            _drinkAnimation.Draw();
         }
         public class StartDrinkButton : Button
         {
@@ -187,9 +221,8 @@ namespace Two_XNA_Client
 
             public override void Click(TwoClient twoClient)
             {
-                _dialog.TimeStarted = DateTime.Now.Ticks;
                 IsActive = false;
-                _dialog.IsRunning = true;
+                _dialog.Start();
             }
         }
         public class CloseDrinkButton : Button
@@ -209,14 +242,84 @@ namespace Two_XNA_Client
             public override void Click(TwoClient twoClient)
             {
                 
-                _twoClient.GameState = _dialog.OldGameState;
-                if (_dialog.ResetDrinks)
-                {
-                    _twoClient.SendMessage("DRINKRESET");
-                    _twoClient.PlayerList[_twoClient.PlayerNumber].NumberOfDrinks = 0;
-                }
-                _dialog.IsActive = false;
+                _dialog.Close();
                 base.Click(twoClient);
+            }
+        }
+
+        public bool IsActive
+        {
+            get; set; 
+        }
+    }
+    public class MooseForm : ITimedDialog
+    {
+        private readonly TwoClient _twoClient;
+        private readonly long _timeCreated;
+        private readonly MooseButton _mBut;
+        private readonly int _oldGameState;
+        
+        public MooseForm(TwoClient twoClient, int x, int y, int width, int height )
+        {
+            _twoClient = twoClient;
+            _timeCreated = System.DateTime.Now.Ticks;
+            _oldGameState = twoClient.GameState;
+            _mBut = new MooseButton(x,y, width, height,
+                                    twoClient,_twoClient.MOOSETexture, _oldGameState);
+            _oldGameState = twoClient.GameState;
+            _twoClient.SoundDict["MOOSE"].Play();
+            twoClient.GameState = 4;
+        }
+
+        public void Draw()
+        {
+            _mBut.Draw();
+                
+            
+        }
+
+        public bool IsActive { get;
+            set;
+        }
+        private class MooseButton : IClickable, IDrawable
+        {
+            private TwoClient _twoClient;
+            private Texture2D _butTexture;
+            private Rectangle _boxPos;
+            public Boolean MouseOver { get; set; }
+            public Boolean BeenClicked { get; set; }
+            private int _oldState;
+            public void Click(TwoClient twoClient)
+            {
+                twoClient.SendMessage("MOOSE");
+                twoClient.TimedDialog.IsActive = false;
+                _twoClient.GameState = _oldState;
+            }
+
+            public bool GetMouseOver()
+            {
+                return MouseOver;
+            }
+
+            public void SetMouseOver(bool mouseOver)
+            {
+                MouseOver = mouseOver;
+            }
+
+            public MooseButton(int x, int y, int width, int height, TwoClient twoClient, Texture2D butTexture, int oldState)
+            {
+                _twoClient = twoClient;
+                _butTexture = butTexture;
+                _boxPos = new Rectangle(x, y, width, height);
+                MouseOver = false;
+                BeenClicked = false;
+                _oldState = oldState;
+            }
+            public void Draw()
+            {
+                _twoClient.ClickableList.Add(_boxPos, this);
+
+                _twoClient.SpriteBatch.Draw(_butTexture, _boxPos, Color.White);
             }
         }
     }

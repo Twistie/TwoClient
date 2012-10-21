@@ -162,6 +162,7 @@
     <Compile Include="Button.cs" />
     <Compile Include="Card.cs" />
     <Compile Include="Drawable.cs" />
+    <Compile Include="DrinkAnimation.cs" />
     <Compile Include="FindServer.cs">
       <SubType>Form</SubType>
     </Compile>

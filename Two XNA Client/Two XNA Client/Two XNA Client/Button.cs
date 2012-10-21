@@ -17,10 +17,10 @@ namespace Two_XNA_Client
         public bool MouseOver, IsActive;
         private readonly string _buttonText;
         private readonly TwoClient _twoClient;
-        private readonly Texture2D _butTexture;
+        protected readonly Texture2D _butTexture;
         private readonly SpriteFont _font;
-        private readonly List<Rectangle> _buttonTextures;
-        private Rectangle _boxPos;
+        protected readonly List<Rectangle> _buttonTextures;
+        protected Rectangle _boxPos;
         private readonly Vector2 _textPos;
         public Button(int x, int y, int width, float scale, string text, TwoClient twoClient, SpriteFont font, Texture2D butTexture)
         {

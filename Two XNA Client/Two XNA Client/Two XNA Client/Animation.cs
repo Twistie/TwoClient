@@ -94,4 +94,10 @@ namespace Two_XNA_Client
                 Finished = true;
         }
     }
+    /// <summary>
+    /// Animation for the schooner draining while people are drinking
+    /// </summary>
+    
+
+        
 }

@@ -20,21 +20,17 @@ using Keys = Microsoft.Xna.Framework.Input.Keys;
 
 namespace Two_XNA_Client
 {
-    /// <summary>
-    /// This is the main type for your game
-    /// </summary>
     public class TwoClient : Microsoft.Xna.Framework.Game
     {
-        private FindServer _findServer; 
         private readonly Thread _udpThread;
-        private readonly GraphicsDeviceManager _graphics;
+        
         public readonly Card TopDown = new Card("Top Down", 0.0, 4, 0);
         public int GameState;
         public int LightMaster = -1;
         public Boolean IsRunning = true;
         public List<Card> PlayerCards = new List<Card>();
         public List<Player> PlayerList = new List<Player>();
-        public Texture2D ButtonTexture, PlayerTexture, PlayerPinkTexture,TableTexture;
+        public Texture2D ButtonTexture, PlayerTexture, PlayerPinkTexture,TableTexture,SpotlightTexture, DrinkTexture,DrinkPlateTexture, MOOSETexture;
         private Dictionary<double, Card> _cardList;
         private Texture2D _cardTexture;
         public Dictionary<Rectangle, IClickable> ClickableList = new Dictionary<Rectangle, IClickable>();
@@ -59,10 +55,8 @@ namespace Two_XNA_Client
         private long _lastGameAnnounce;
         private KeyValuePair<Rectangle, Card> _mouseOverCard = new KeyValuePair<Rectangle, Card>();
         private Color _bgColour = Color.Black;
-        private double _drinkStart;
         public int WindowWidth, WindowHeight;
-        public TimedDrinkDialog TimedDialog;
-        private int _windowHeight, _windowWidth;
+        public ITimedDialog TimedDialog;
         private IClickable _oldTop;
         private Mutex _isDrawing = new Mutex(false);
         public ServerDialog ServDialog;
@@ -70,53 +64,42 @@ namespace Two_XNA_Client
         private bool _isKeyDown = false;
         public IAcceptKeyboard keyboardObject;
         public Dictionary<string, SoundEffect> SoundDict; 
+        /// <summary>
+        /// Constructor
+        /// </summary>
         public TwoClient()
         {
-            
-            
-            _findServer = new FindServer(this);
+            Turn = -1;
+            //_findServer = new FindServer(this);
             _lastAnnounce = DateTime.Now.Ticks;
             _lastGameAnnounce = DateTime.Now.Ticks;
-            _graphics = new GraphicsDeviceManager(this);
+            GraphicsDeviceManager graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
             
             CardList();
             _udpThread = new Thread(RecieveUdp);
             _udpThread.Start();
-            //_findServer.TopMost = true;
-            //_findServer.Show();
 
             Form f = (Form)Form.FromHandle(Window.Handle);
             f.Location = new System.Drawing.Point(0, 0);
-            _graphics.PreferredBackBufferHeight = Screen.PrimaryScreen.WorkingArea.Size.Height;
-            _graphics.PreferredBackBufferWidth = Screen.PrimaryScreen.WorkingArea.Size.Width;
+            graphics.PreferredBackBufferHeight = Screen.PrimaryScreen.WorkingArea.Size.Height;
+            graphics.PreferredBackBufferWidth = Screen.PrimaryScreen.WorkingArea.Size.Width;
             f.Size = Screen.PrimaryScreen.WorkingArea.Size;
 
-            _windowHeight = this.Window.ClientBounds.Height;
-            _windowWidth = this.Window.ClientBounds.Width;
-
-
         }
-
         /// <summary>
-        /// Allows the game to perform any initialization it needs to before starting to run.
-        /// This is where it can query for any required services and load any non-graphic
-        /// related content.  Calling base.Initialize will enumerate through any components
-        /// and initialize them as well.
+        /// Initialize
         /// </summary>
         protected override void Initialize()
         {
-            // TODO: Add your initialization logic here
             
             IsMouseVisible = true;
             base.Initialize();
             Window.AllowUserResizing = true;
             
         }
-
         /// <summary>
-        /// LoadContent will be called once per game and is the place to load
-        /// all of your content.
+        /// Loads content from resource files, prepares colours for use etc
         /// </summary>
         protected override void LoadContent()
         {
@@ -127,13 +110,17 @@ namespace Two_XNA_Client
             ButtonTexture = Content.Load<Texture2D>("Buttons");
             _tokenTexture = Content.Load<Texture2D>("Tokens");
             PlayerTexture = Content.Load<Texture2D>("PlayerPlates");
+            DrinkTexture = Content.Load<Texture2D>("Drink");
+            DrinkPlateTexture = Content.Load<Texture2D>("DrinkPlate");
+            SpotlightTexture = Content.Load<Texture2D>("Spotlight");
             PlayerPinkTexture = Content.Load<Texture2D>("PinkPlayerPlates");
+            MOOSETexture = Content.Load<Texture2D>("MOOSE");
             TableTexture = Content.Load<Texture2D>("Table");
             BlankTextures = new List<Texture2D>();
             BlankTextures.Add(new Texture2D(GraphicsDevice, 1, 1));
             BlankTextures.Add(new Texture2D(GraphicsDevice, 1, 1));
             BlankTextures.Add(new Texture2D(GraphicsDevice, 1, 1));
-            BlankTextures[1].SetData(new Color[] {Color.DarkGray});
+            BlankTextures[1].SetData(new Color[] {Color.DarkGray}); 
             BlankTextures[0].SetData(new Color[] {Color.Black});
             BlankTextures[2].SetData(new Color[] { Color.White });
             Sf = Content.Load<SpriteFont>("normFont");
@@ -141,13 +128,10 @@ namespace Two_XNA_Client
             SoundDict.Add("CLICK",Content.Load<SoundEffect>("Click"));
             SoundDict.Add("CARD", Content.Load<SoundEffect>("cardflip"));
             SoundDict.Add("SHUFFLE",Content.Load<SoundEffect>("cardshuffle"));
-           
+            SoundDict.Add("BEEP", Content.Load<SoundEffect>("lmbeep"));
+            SoundDict.Add("MOOSE", Content.Load<SoundEffect>("MOOSESnd"));
         }
 
-        /// <summary>
-        /// UnloadContent will be called once per game and is the place to unload
-        /// all content.
-        /// </summary>
         protected override void UnloadContent()
         {
             IsRunning = false;
@@ -159,21 +143,17 @@ namespace Two_XNA_Client
             _udpThread.Abort();
         }
         
-        /// <summary>
-        /// Allows the game to run logic such as updating the world,
-        /// checking for collisions, gathering input, and playing audio.
-        /// </summary>
-        /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Update(GameTime gameTime)
         {
-            // Allows the game to exit
 
             MouseCheck();
             KeyboardHandler();
 
             base.Update(gameTime);
         }
-
+        /// <summary>
+        /// Checks the mouse against the clickable list, and executes the clickables if clicked
+        /// </summary>
         public void MouseCheck()
         {
             _ms = Mouse.GetState();
@@ -242,44 +222,36 @@ namespace Two_XNA_Client
             DrawAnnouncement();
             DrawGameAnnouncement();
             DrawDrawables();
+            
             switch (GameState)
             {
                 case -2:
                     DrawString("Waiting for the server to start game!",(int)(this.Window.ClientBounds.Width/2-Sf.MeasureString("Waiting for the server to start game!").X/2),this.Window.ClientBounds.Height/2,0f,1f);
-                    //DrawPlayerCards();
-                    //DrawOtherPlayers();
                     break;
                 case -1:
                     DrawString("Waiting for player list", (int)(this.Window.ClientBounds.Width / 2 - Sf.MeasureString("Waiting For Game to Start").X/2), this.Window.ClientBounds.Height, 0f, 1f);
                     
                     break;
                 case 0:
-                    //DrawString("Waiting To Join Game", (int)(this.Window.ClientBounds.Width / 2 - Sf.MeasureString("Waiting To Join Game").X/2), this.Window.ClientBounds.Height / 2, 0f, 1f);
                     ServDialog.Draw();
                     break;
                 case 1:
-                   // DrawPlayerCards();
                     DrawTopCard();
-                    //DrawOtherPlayers();
                     break;
                 case 2:
-                    //DrawPlayerCards();
                     DrawTopCard();
-                    //DrawOtherPlayers();
                     DrawMouseoverCard();
                     break;
                 case 3:
-                    //DrawOtherPlayers();
-                    //DrawPlayerCards();
                     DrawString("Target a player!", Window.ClientBounds.Width/2 - 90,
                                Window.ClientBounds.Height/2, 0f, 1.5f);
                     break;
                 case 4:
-                    //DrawOtherPlayers();
-                    //DrawPlayerCards();
-                    DrawTimedForm(PlayerList[PlayerNumber].NumberOfDrinks,"HAH-HA");
+                    DrawTimedForm();
                     break;
             }
+            //if (TimedDialog != null && TimedDialog.IsActive)
+                //TimedDialog.Draw();
             for( int i = 0; i < AnimationList.Count; i++ )
             {
                 AnimationList[i].Draw();
@@ -290,7 +262,10 @@ namespace Two_XNA_Client
             _isDrawing.ReleaseMutex();
             base.Draw(gameTime);
         }
-
+        /// <summary>
+        /// Changes the game state and resets the draw list to the appropriate values.
+        /// </summary>
+        /// <param name="i"></param>
         public void SetGameState(int i)
         {
             if (i == GameState)
@@ -305,6 +280,10 @@ namespace Two_XNA_Client
             }
             DrawButtons();
         }
+        /// <summary>
+        /// Resets the drawable list to ensure that it is stable
+        /// 
+        /// </summary>
         public void RedoDrawableList()
         {
             DrawableList = new List<IDrawable>();
@@ -316,6 +295,9 @@ namespace Two_XNA_Client
             }
             DrawButtons();
         }
+        /// <summary>
+        /// Draw each item in the drawable list
+        /// </summary>
         public void DrawDrawables()
         {
             foreach (IDrawable d in DrawableList)
@@ -324,6 +306,9 @@ namespace Two_XNA_Client
                     d.Draw();
             }
         }
+        /// <summary>
+        /// Redraws the card that the mouse is over to bring it to the front
+        /// </summary>
         public void DrawMouseoverCard()
         {
             if( _mouseOverCard.Value != null)
@@ -331,6 +316,9 @@ namespace Two_XNA_Client
                 DrawCard(_mouseOverCard.Key.X - 5, _mouseOverCard.Key.Y - 5, _mouseOverCard.Value, Color.LightYellow,0f,2.2f);
             }
         }
+        /// <summary>
+        /// Draws the middle cards and draw deck
+        /// </summary>
         public void DrawTopCard()
         {
             SpriteBatch.Draw(TableTexture,new Rectangle(WindowWidth/2-160,WindowHeight/2-140,372,210),Color.White );
@@ -344,28 +332,22 @@ namespace Two_XNA_Client
             if (GameState == 2)
             {
                 DrawCard((Window.ClientBounds.Width/2) + 44, (Window.ClientBounds.Height/2) - 125, TopDown, Color.White,0f,2.6f);
-                //ClickableList.Add(
-                //    new Rectangle((Window.ClientBounds.Width / 2) + 23, (Window.ClientBounds.Height / 2) - 54, 80, 120),
-                //    new DrawButton());
             }
             else
             {
                 DrawCard((Window.ClientBounds.Width / 2) + 44, (Window.ClientBounds.Height / 2) - 125, TopDown, Color.LightGray,0f, 2.6f);
             }
         }
-
+        /// <summary>
+        /// Draws the 'draw card' and 'LightMaster' cards
+        /// </summary>
         public void DrawButtons()
         {
             if (GameState == 0)
             {
-                //ClickableList.Add(new Rectangle(Window.ClientBounds.X/2, Window.ClientBounds.Y/2, 120, 100),
-                //                   new StartButton());
-// ReSharper disable PossibleLossOfFraction
-                //DrawableList.Add(new StartButton());
                 SpriteBatch.Draw(ButtonTexture, new Vector2(Window.ClientBounds.X/2, Window.ClientBounds.Y/2),
                                   new Rectangle(0, 0, 120, 100), Color.White, 0, new Vector2(0, 0), 1f,
                                   new SpriteEffects(), 0);
-// ReSharper restore PossibleLossOfFraction
             }
             if (GameState == 2)
             {
@@ -389,67 +371,109 @@ namespace Two_XNA_Client
                 DrawableList.Add(l);
             }
         }
+        /// <summary>
+        /// Draws the player list (redundant)
+        /// </summary>
         public void DrawPlayerList()
         {
-            string playerString = "";
+            string playerString = PlayerList.Aggregate("", (current, p) => current + (p.Name + "\r\n"));
 
-            foreach (Player p in PlayerList)
-            {
-                playerString += p.Name + "\r\n";
-            }
             SpriteBatch.DrawString(Sf, playerString, new Vector2(300, 0), Color.Black);
         }
-
+        /// <summary>
+        /// Draws the position of the mouse (debug)
+        /// </summary>
         public void DrawMouse()
         {
             string mouseString = "x: " + _ms.X + " y: " + _ms.Y + " " + _mouseOverText;
             SpriteBatch.DrawString(Sf, mouseString, new Vector2(0, 0), Color.Black);
         }
+        /// <summary>
+        /// Sets the announcement in the middle of the screen (line 1)
+        /// </summary>
+        /// <param name="inString">Announcement to be drawn</param>
         public void SetAnnouncement(string inString)
         {
             _lastAnnounce = DateTime.Now.Ticks;
             _announce = inString;
         }
+        /// <summary>
+        /// Sets the second line of the announcement in the middle of the game screen
+        /// </summary>
+        /// <param name="inString"></param>
         public void SetGameAnnouncement(string inString)
         {
             _lastGameAnnounce = DateTime.Now.Ticks;
             _gameAnnounce = inString;
         }
+        /// <summary>
+        /// Draws the announcement
+        /// </summary>
         public void DrawAnnouncement()
         {
             float vis = 5 - (DateTime.Now.Ticks - _lastAnnounce) / 10000000f;
             if (DateTime.Now.Ticks - _lastAnnounce <= 60000000)
                 SpriteBatch.DrawString(Sf, _announce, new Vector2((Window.ClientBounds.Width / 2) - Sf.MeasureString(_announce).X / 2, (Window.ClientBounds.Height / 2) - 180), Color.FromNonPremultiplied(255, 255, 255, (int)(255 * vis)));
         }
+        /// <summary>
+        /// Draws the game announcement
+        /// </summary>
         public void DrawGameAnnouncement()
         {
             float vis = 12 - (DateTime.Now.Ticks - _lastGameAnnounce) / 10000000f;
             if( DateTime.Now.Ticks - _lastGameAnnounce  <= 130000000)
                 SpriteBatch.DrawString(Sf, _gameAnnounce, new Vector2((Window.ClientBounds.Width / 2) - Sf.MeasureString(_gameAnnounce).X/2, (Window.ClientBounds.Height / 2)-200), Color.FromNonPremultiplied(255,255,255,(int)(255*vis) ));
         }
+        /// <summary>
+        /// Draws a string on the screen using the default font
+        /// </summary>
+        /// <param name="inString">String to draw</param>
+        /// <param name="x">x of top left corner</param>
+        /// <param name="y">y of top left corner</param>
+        /// <param name="rotation">rotation in radians</param>
+        /// <param name="scale">scale in float</param>
         public void DrawString(string inString, int x, int y, float rotation, float scale)
         {
             SpriteBatch.DrawString(Sf, inString, new Vector2(x, y), Color.White, rotation, new Vector2(0, 0), scale,
                                     new SpriteEffects(), 0);
         }
+        /// <summary>
+        /// Draws a string on the screen using the default font (overloaded)
+        /// </summary>
+        /// <param name="inString">String to draw</param>
+        /// <param name="x">x of top left corner</param>
+        /// <param name="y">y of top left corner</param>
+        /// <param name="rotation">rotation in radians</param>
+        /// <param name="scale">scale in float</param>
+        /// <param name="colour">colour</param>
         public void DrawString(string inString, int x, int y, float rotation, float scale, Color colour)
         {
             SpriteBatch.DrawString(Sf, inString, new Vector2(x, y), colour, rotation, new Vector2(0, 0), scale,
                                     new SpriteEffects(), 0);
         }
+        /// <summary>
+        /// Draws the players current cards
+        /// </summary>
         public void DrawPlayerCards()
         {
             PlayerList[PlayerNumber].DrawAsPlayerCards();
-            
         }
-
+        /// <summary>
+        /// Draw a token or small sprite to the screen
+        /// </summary>
+        /// <param name="tokenNumber">Reference to token</param>
+        /// <param name="x">x of top left corner</param>
+        /// <param name="y">y of top left corner</param>
+        /// <param name="rotation">rotation</param>
         public void DrawToken(int tokenNumber, int x, int y, float rotation)
         {
             Rectangle r = new Rectangle(40*tokenNumber, 0, 40, 40);
             SpriteBatch.Draw(_tokenTexture, new Vector2(x, y), r, Color.White, rotation, new Vector2(0, 0), 1,
                               new SpriteEffects(), 0);
         }
-
+        /// <summary>
+        /// Add the other players profiles to the drawable list
+        /// </summary>
         public void DrawOtherPlayers()
         {
             PlayerList[PlayerNumber].PlayerPos = 0;
@@ -458,13 +482,6 @@ namespace Two_XNA_Client
                 case 0:
                     return;
                 case 1:
-                    //DrawLeftPlayer(0);
-                    //DrawOppositePlayer(0, (int) this.Window.ClientBounds.Width/2);
-                    //DrawOppositePlayer(0, (int) (this.Window.ClientBounds.Width/2 - 170)/2);
-                    //DrawOppositePlayer(0,
-                    //                   (int)
-                    //                   ((this.Window.ClientBounds.Width/2 + 170) + (this.Window.ClientBounds.Width))/2);
-                    //DrawRightPlayer(0);
                     break;
                 case 2:
                     if (PlayerNumber == 0)
@@ -492,7 +509,13 @@ namespace Two_XNA_Client
             }
             RedoDrawableList();
         }
-
+        /// <summary>
+        /// Creates an animation in which n cards are moving from the middle of the deck to a player and adds it to
+        /// the animation list
+        /// </summary>
+        /// <param name="player">int of player that is to recieve the card</param>
+        /// <param name="noCards">number of cards to pass</param>
+        /// <param name="card">what card graphic to use</param>
         public void Animation_CardToPlayer(int player, int noCards, Card card)
         {
             switch( PlayerList[player].PlayerPos )
@@ -529,6 +552,12 @@ namespace Two_XNA_Client
                     return;
             }
         }
+        /// <summary>
+        /// Creates an animation in which a card moves from the players deck to the middle, and adds it to the animationlist
+        /// </summary>
+        /// <param name="player">int of player that is to recieve the card</param>
+        /// <param name="noCards">number of cards to pass</param>
+        /// <param name="card">what card graphic to use</param>
         public void Animation_CardFromPlayer(int player, int noCards, Card card)
         {
             switch (PlayerList[player].PlayerPos)
@@ -566,10 +595,18 @@ namespace Two_XNA_Client
                     return;
             }
         }
+        /// <summary>
+        /// Draws the opposite player to you
+        /// </summary>
+        /// <param name="player">Player number to draw</param>
+        /// <param name="x">x offset of player</param>
         public void DrawOppositePlayer(int player, int x)
         {
             PlayerList[player].DrawOppositePlayer(x);
         }
+        /// <summary>
+        /// Draws a bordered rectangle (now redundant)
+        /// </summary>
         public void DrawBorderedRect(int col, int x, int sizeX, int y, int sizeY )
         {
             Rectangle r = new Rectangle(x,y,sizeX,sizeY);
@@ -577,6 +614,13 @@ namespace Two_XNA_Client
             SpriteBatch.Draw(BlankTextures[0],b,Color.White);
             SpriteBatch.Draw(BlankTextures[1],r, Color.White);
         }
+        /// <summary>
+        /// Draws a card
+        /// </summary>
+        /// <param name="x">y</param>
+        /// <param name="y">x</param>
+        /// <param name="c">card</param>
+        /// <param name="colour">colour</param>
         public void DrawCard(int x, int y, Card c, Color colour)
         {
             Vector2 zeroVect = new Vector2(0, 0);
@@ -610,13 +654,16 @@ namespace Two_XNA_Client
         {
             PlayerList[player].DrawVerticalPlayer(WindowWidth-138);
         }
-
-        public void SendCard(Card _c)
+        /// <summary>
+        /// Sends a card to the server to be played
+        /// </summary>
+        /// <param name="c">Card to be played</param>
+        public void SendCard(Card c)
         {
             int n = PlayerCards.Count;
             for (int i = 0; i < n; i++)
             {
-                if (PlayerCards[i] == _c)
+                if (PlayerCards[i] == c)
                 {
                     string toSend = ("CARD " + i);
                     SendMessage(toSend);
@@ -624,7 +671,10 @@ namespace Two_XNA_Client
                 }
             }
         }
-
+        /// <summary>
+        /// Binds a udp socket, and then enters a loop in which it recieves a message and sends it to the
+        /// parser
+        /// </summary>
         private void RecieveUdp()
         {
 
@@ -678,12 +728,20 @@ namespace Two_XNA_Client
                 _isDrawing.ReleaseMutex();
             }
         }
-
+        /// <summary>
+        /// adds text to the old logbox(now redundant
+        /// </summary>
+        /// <param name="toAdd"></param>
         public void AddText(string toAdd)
         {
             //logBox.Text = logBox.Text + "\r\n" + toAdd;
         }
 
+        /// <summary>
+        /// Sends a join message to a given server
+        /// </summary>
+        /// <param name="inAddr">Address to send to</param>
+        /// <param name="inName">Your name</param>
         public void SendJoin(IPEndPoint inAddr, string inName)
         {
             _serverEndPoint = inAddr;
@@ -696,21 +754,29 @@ namespace Two_XNA_Client
             GameState = -1;
             SetAnnouncement( "Waiting for Server to begin");
         }
-
+        /// <summary>
+        /// Send a given message to the server (only functions after the server is set)
+        /// </summary>
+        /// <param name="toSend">message to send</param>
         public void SendMessage(string toSend)
         {
             System.Text.UTF8Encoding encoding = new System.Text.UTF8Encoding();
             byte[] sendByte = encoding.GetBytes(toSend);
             _udpSocket.SendTo(sendByte, _serverEndPoint);
         }
-
+        /// <summary>
+        /// Parses a message recieved by udp and executes instructions contained within
+        /// </summary>
+        /// <param name="inMessage">Message to be passed</param>
+        /// <param name="inAddr">Address message originated</param>
         public void MessageParser(string inMessage, IPEndPoint inAddr)
         {
             AddTextFromThread(inMessage);
             string[] messageArray = inMessage.Split(' ');
             if (GameState == 0)
-                if (messageArray[0] == "GAME")
-                {
+                if (messageArray[0] == "GAME" && ServDialog != null)
+                {   
+                    
                     ServDialog.AddServer("Game",inAddr);
                     return;
                 }
@@ -746,6 +812,7 @@ namespace Two_XNA_Client
                         else
                         {
                             TimedDialog = new TimedDrinkDialog(this, PlayerList[PlayerNumber].NumberOfDrinks * .75f, "NOT SO FAST. Too many drinks backed up.");
+                            SendMessage("DRINKSFORM " + PlayerList[PlayerNumber].NumberOfDrinks * .75f);
                             GameState = 4;
                         }
                     else
@@ -789,17 +856,40 @@ namespace Two_XNA_Client
                     break;
                 case "LIGHTON":
                     PlayerList[int.Parse(messageArray[1])].LightOn = true;
+                    SoundDict["BEEP"].Play(.15f, 0f, 0f);
                     break;
                 case "LIGHTOFF":
                     PlayerList[int.Parse(messageArray[1])].LightOn = false;
                     break;
                 case "TIMEDFORM":
-                    if( TimedDialog != null)
-                        if (TimedDialog.IsActive)
-                            return;
-                    TimedDialog = new TimedDrinkDialog(this, int.Parse(messageArray[1]), inMessage.Remove(0, 12));
-                    TimedDialog.ResetDrinks = false;
                     
+                        if (int.Parse(messageArray[2]) == PlayerNumber)
+                        {
+                            if( TimedDialog == null || !TimedDialog.IsActive )
+                                TimedDialog = new TimedDrinkDialog(this, float.Parse(messageArray[1]), inMessage.Remove(0, 14));
+                            else
+                            {
+                                TimedDrinkDialog d = (TimedDrinkDialog) TimedDialog;
+                                d.AddDrink(float.Parse(messageArray[2]));
+                            }
+                        }
+                        else
+                        {
+                            PlayerList[int.Parse(messageArray[2])].Drink(float.Parse(messageArray[1]));
+                        }
+                
+                    break;
+                case "STARTDRINK":
+                    int playerStarted = int.Parse(messageArray[1]);
+                    if( playerStarted != PlayerNumber )
+                    {
+                        PlayerList[playerStarted].StartDrink();
+                    }
+                    
+                    //TimedDialog.Start();
+                    break;
+                case "MOOSE":
+                    TimedDialog = new MooseForm(this, WindowWidth/2 - 250, WindowHeight/2 - 250, 500, 500);
                     break;
                 case "NAME":
                     PlayerList[int.Parse(messageArray[1])].Name = inMessage.Remove(0,7);
@@ -821,6 +911,11 @@ namespace Two_XNA_Client
                     break;
             }
         }
+        /// <summary>
+        /// Switches a players colour (currently only changes a players colour between pink and normal )
+        /// </summary>
+        /// <param name="player">player</param>
+        /// <param name="col">colour (0=normal, 1=pink)</param>
         public void DoColour(int player, int col)
         {
 
@@ -834,6 +929,12 @@ namespace Two_XNA_Client
                     break;
             }
         }
+        /// <summary>
+        /// Splits text up into lines up to a maximum width using the default font
+        /// </summary>
+        /// <param name="maxWidth">maximum width in pixels</param>
+        /// <param name="inString">string to be split</param>
+        /// <returns>list split up appropriately</returns>
         public List<string> SplitText( int maxWidth, string inString )
         {
             string outString = "";
@@ -855,15 +956,24 @@ namespace Two_XNA_Client
             outList.Add(outString);
             return outList;
         }
-        public void DrawTimedForm( int time, string message)
+        /// <summary>
+        /// Draws the current timed form
+        /// </summary>
+        public void DrawTimedForm()
         {
             TimedDialog.Draw();
         }
-
+        /// <summary>
+        /// Executes when you target a player when in target player state
+        /// </summary>
         private void DoTargetPlayer()
         {
             GameState = 3;
         }
+        /// <summary>
+        /// Sets the player list to a given list, erases previous list
+        /// </summary>
+        /// <param name="inList">list of players</param>
         public void SetPlayerList(string[] inList)
         {
             PlayerList = new List<Player>();
@@ -873,7 +983,10 @@ namespace Two_XNA_Client
             }
             DrawOtherPlayers();
         }
-
+        /// <summary>
+        /// Set the player cards to the given list
+        /// </summary>
+        /// <param name="cardList">incoming list of cards</param>
         public void SetPlayerCards(string[] cardList)
         {
             PlayerCards = new List<Card>();
@@ -882,7 +995,10 @@ namespace Two_XNA_Client
                 PlayerCards.Add(_cardList[double.Parse(cardList[i])]);
             }
         }
-        
+        /// <summary>
+        /// Redundant
+        /// </summary>
+        /// <param name="message"></param>
         private void AddTextFromThread(string message)
         {
             //if (this.logBox.InvokeRequired)
@@ -891,7 +1007,10 @@ namespace Two_XNA_Client
             //    AddText(Message);
         }
 
-
+        /// <summary>
+        /// Creates the card list and stores it in the _cardList variable, includes information on when a card
+        /// can be played and the graphics to be drawn for it
+        /// </summary>
         public void CardList()
         {
             _cardList = new Dictionary<double, Card>();
@@ -1014,7 +1133,9 @@ namespace Two_XNA_Client
 
         }
 
-
+        /// <summary>
+        /// When the draw card button is pressed this is executed
+        /// </summary>
         public void DrawCard()
         {
             if (GameState == 2)
@@ -1026,6 +1147,9 @@ namespace Two_XNA_Client
         List<Keys> PreviousKeys = new List<Keys>();
         long lastTime;
         bool fastTimer = false;
+        /// <summary>
+        /// Checks the status of the keyboard against previous states and executes differences
+        /// </summary>
         public void KeyboardHandler()
         {
             if (keyboardObject == null)

@@ -12,7 +12,7 @@ namespace Two_XNA_Client
 {
     public partial class TimedForm : Form
     {
-        private readonly TwoClient _twoClient;
+        internal readonly TwoClient _twoClient;
         private int _timeLeft;
         public TimedForm(TwoClient twoClient, string label, int timeInSeconds)
         {
